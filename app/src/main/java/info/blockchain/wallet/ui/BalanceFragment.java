@@ -25,7 +25,6 @@ import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
 import android.text.Spannable;
-import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -40,7 +39,6 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -56,7 +54,6 @@ import info.blockchain.wallet.payload.PayloadBridge;
 import info.blockchain.wallet.payload.PayloadFactory;
 import info.blockchain.wallet.payload.Transaction;
 import info.blockchain.wallet.payload.Tx;
-import info.blockchain.wallet.util.DateUtil;
 import info.blockchain.wallet.util.MonetaryUtil;
 import info.blockchain.wallet.util.OSUtil;
 import info.blockchain.wallet.util.PrefsUtil;
@@ -95,7 +92,7 @@ public class BalanceFragment extends Fragment implements BalanceViewModel.DataLi
     //
     private double btc_fx = 319.13;
     private Spannable span1 = null;
-    private boolean isBTC = true;
+    public static boolean isBTC = true;
     //
     // accounts list
     //
@@ -103,7 +100,7 @@ public class BalanceFragment extends Fragment implements BalanceViewModel.DataLi
     //
     // tx list
     //
-    private TxAdapter transactionAdapter = null;
+    private TransactionAdapter transactionAdapter = null;
     private LinearLayout noTxMessage = null;
     private Activity context = null;
     private int originalHeight = 0;
@@ -348,7 +345,7 @@ public class BalanceFragment extends Fragment implements BalanceViewModel.DataLi
                 if (BALANCE_DISPLAY_STATE == SHOW_BTC) {
                     BALANCE_DISPLAY_STATE = SHOW_FIAT;
                     isBTC = false;
-                    viewModel.updateBalanceAndTransactionList(null, accountSpinner.getSelectedItemPosition(), isBTC);
+                    viewModel.updateBalanceAndTransactionList(null, accountSpinner.getSelectedItemPosition(), isBTC);//TODO OMG WHY?
 
                 } else if (BALANCE_DISPLAY_STATE == SHOW_FIAT) {
                     BALANCE_DISPLAY_STATE = SHOW_HIDE;
@@ -358,7 +355,7 @@ public class BalanceFragment extends Fragment implements BalanceViewModel.DataLi
                 } else {
                     BALANCE_DISPLAY_STATE = SHOW_BTC;
                     isBTC = true;
-                    viewModel.updateBalanceAndTransactionList(null, accountSpinner.getSelectedItemPosition(), isBTC);
+                    viewModel.updateBalanceAndTransactionList(null, accountSpinner.getSelectedItemPosition(), isBTC);//TODO OMG WHY?
                 }
                 PrefsUtil.getInstance(context).setValue(PrefsUtil.KEY_BALANCE_DISPLAY_STATE, BALANCE_DISPLAY_STATE);
 
@@ -400,9 +397,10 @@ public class BalanceFragment extends Fragment implements BalanceViewModel.DataLi
             }
         });
 
-        transactionAdapter = new TxAdapter();
+        transactionAdapter = new TransactionAdapter(context);
         layoutManager = new LinearLayoutManager(context);
         binding.rvTransactions.setLayoutManager(layoutManager);
+        transactionAdapter.setItems(viewModel.getTransactionList());
         binding.rvTransactions.setAdapter(transactionAdapter);
 
         binding.rvTransactions.setOnScrollListener(new CollapseActionbarScrollListener() {
@@ -814,120 +812,120 @@ public class BalanceFragment extends Fragment implements BalanceViewModel.DataLi
         public void resetNavigationDrawer();
     }
 
-    private class TxAdapter extends RecyclerView.Adapter<TxAdapter.ViewHolder> {
-
-        @Override
-        public TxAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-
-            View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.txs_layout_expandable, parent, false);
-            return new ViewHolder(v);
-        }
-
-        @Override
-        public void onBindViewHolder(final ViewHolder holder, final int position) {
-
-            String strFiat = PrefsUtil.getInstance(context).getValue(PrefsUtil.KEY_SELECTED_FIAT, PrefsUtil.DEFAULT_CURRENCY);
-
-            if (viewModel.getTransactionList() != null) {
-                final Tx tx = viewModel.getTransactionList().get(position);
-                double _btc_balance = tx.getAmount() / 1e8;
-                double _fiat_balance = btc_fx * _btc_balance;
-
-                View txTouchView = holder.itemView.findViewById(R.id.tx_touch_view);
-
-                TextView tvResult = (TextView) holder.itemView.findViewById(R.id.result);
-                tvResult.setTextColor(Color.WHITE);
-
-                TextView tvTS = (TextView) holder.itemView.findViewById(R.id.ts);
-                tvTS.setText(DateUtil.getInstance(context).formatted(tx.getTS()));
-
-                TextView tvDirection = (TextView) holder.itemView.findViewById(R.id.direction);
-                String dirText = tx.getDirection();
-                if (dirText.equals(MultiAddrFactory.MOVED))
-                    tvDirection.setText(getResources().getString(R.string.MOVED));
-                if (dirText.equals(MultiAddrFactory.RECEIVED))
-                    tvDirection.setText(getResources().getString(R.string.RECEIVED));
-                if (dirText.equals(MultiAddrFactory.SENT))
-                    tvDirection.setText(getResources().getString(R.string.SENT));
-
-                if (isBTC) {
-                    span1 = Spannable.Factory.getInstance().newSpannable(MonetaryUtil.getInstance(context).getDisplayAmountWithFormatting(Math.abs(tx.getAmount())) + " " + viewModel.getDisplayUnits());
-                    span1.setSpan(new RelativeSizeSpan(0.67f), span1.length() - viewModel.getDisplayUnits().length(), span1.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                } else {
-                    span1 = Spannable.Factory.getInstance().newSpannable(MonetaryUtil.getInstance().getFiatFormat(strFiat).format(Math.abs(_fiat_balance)) + " " + strFiat);
-                    span1.setSpan(new RelativeSizeSpan(0.67f), span1.length() - 3, span1.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                }
-                if (tx.isMove()) {
-                    tvResult.setBackgroundResource(tx.getConfirmations() < nbConfirmations ? R.drawable.rounded_view_lighter_blue_50 : R.drawable.rounded_view_lighter_blue);
-                    tvDirection.setTextColor(context.getResources().getColor(tx.getConfirmations() < nbConfirmations ? R.color.blockchain_transfer_blue_50 : R.color.blockchain_transfer_blue));
-                } else if (_btc_balance < 0.0) {
-                    tvResult.setBackgroundResource(tx.getConfirmations() < nbConfirmations ? R.drawable.rounded_view_red_50 : R.drawable.rounded_view_red);
-                    tvDirection.setTextColor(context.getResources().getColor(tx.getConfirmations() < nbConfirmations ? R.color.blockchain_red_50 : R.color.blockchain_send_red));
-                } else {
-                    tvResult.setBackgroundResource(tx.getConfirmations() < nbConfirmations ? R.drawable.rounded_view_green_50 : R.drawable.rounded_view_green);
-                    tvDirection.setTextColor(context.getResources().getColor(tx.getConfirmations() < nbConfirmations ? R.color.blockchain_green_50 : R.color.blockchain_receive_green));
-                }
-
-                TextView tvWatchOnly = (TextView) holder.itemView.findViewById(R.id.watch_only);
-                if(tx.isWatchOnly()){
-                    tvWatchOnly.setVisibility(View.VISIBLE);
-                }else{
-                    tvWatchOnly.setVisibility(View.GONE);
-                }
-
-                tvResult.setText(span1);
-
-                tvResult.setOnTouchListener(new OnTouchListener() {
-                    @Override
-                    public boolean onTouch(View v, MotionEvent event) {
-
-                        FrameLayout parent = (FrameLayout) v.getParent();
-                        event.setLocation(v.getX() + (v.getWidth() / 2), v.getY() + (v.getHeight() / 2));
-                        parent.onTouchEvent(event);
-
-                        if (event.getAction() == MotionEvent.ACTION_UP) {
-                            isBTC = (isBTC) ? false : true;
-                            viewModel.updateBalanceAndTransactionList(null, accountSpinner.getSelectedItemPosition(), isBTC);
-                        }
-                        return true;
-                    }
-                });
-
-                txTouchView.setOnTouchListener(new OnTouchListener() {
-                    @Override
-                    public boolean onTouch(View v, MotionEvent event) {
-
-                        FrameLayout parent = (FrameLayout) v.getParent();
-                        event.setLocation(event.getX(), v.getY() + (v.getHeight() / 2));
-                        parent.onTouchEvent(event);
-
-                        if (event.getAction() == MotionEvent.ACTION_UP) {
-                            onRowClick(holder.itemView, position);
-                        }
-                        return true;
-                    }
-                });
-            }
-        }
-
-        @Override
-        public int getItemCount() {
-            if (viewModel.getTransactionList() == null) return 0;
-            return viewModel.getTransactionList().size();
-        }
-
-        @Override
-        public int getItemViewType(int position) {
-            return position;
-        }
-
-        public class ViewHolder extends RecyclerView.ViewHolder {
-
-            public ViewHolder(View view) {
-                super(view);
-            }
-        }
-    }
+//    private class TxAdapter extends RecyclerView.Adapter<TxAdapter.ViewHolder> {
+//
+//        @Override
+//        public TxAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+//
+//            View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.txs_layout_expandable, parent, false);
+//            return new ViewHolder(v);
+//        }
+//
+//        @Override
+//        public void onBindViewHolder(final ViewHolder holder, final int position) {
+//
+//            String strFiat = PrefsUtil.getInstance(context).getValue(PrefsUtil.KEY_SELECTED_FIAT, PrefsUtil.DEFAULT_CURRENCY);
+//
+//            if (viewModel.getTransactionList() != null) {
+//                final Tx tx = viewModel.getTransactionList().get(position);
+//                double _btc_balance = tx.getAmount() / 1e8;
+//                double _fiat_balance = btc_fx * _btc_balance;
+//
+//                View txTouchView = holder.itemView.findViewById(R.id.tx_touch_view);
+//
+//                TextView tvResult = (TextView) holder.itemView.findViewById(R.id.result);
+//                tvResult.setTextColor(Color.WHITE);
+//
+//                TextView tvTS = (TextView) holder.itemView.findViewById(R.id.ts);
+//                tvTS.setText(DateUtil.getInstance(context).formatted(tx.getTS()));
+//
+//                TextView tvDirection = (TextView) holder.itemView.findViewById(R.id.direction);
+//                String dirText = tx.getDirection();
+//                if (dirText.equals(MultiAddrFactory.MOVED))
+//                    tvDirection.setText(getResources().getString(R.string.MOVED));
+//                if (dirText.equals(MultiAddrFactory.RECEIVED))
+//                    tvDirection.setText(getResources().getString(R.string.RECEIVED));
+//                if (dirText.equals(MultiAddrFactory.SENT))
+//                    tvDirection.setText(getResources().getString(R.string.SENT));
+//
+//                if (isBTC) {
+//                    span1 = Spannable.Factory.getInstance().newSpannable(MonetaryUtil.getInstance(context).getDisplayAmountWithFormatting(Math.abs(tx.getAmount())) + " " + viewModel.getDisplayUnits());
+//                    span1.setSpan(new RelativeSizeSpan(0.67f), span1.length() - viewModel.getDisplayUnits().length(), span1.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+//                } else {
+//                    span1 = Spannable.Factory.getInstance().newSpannable(MonetaryUtil.getInstance().getFiatFormat(strFiat).format(Math.abs(_fiat_balance)) + " " + strFiat);
+//                    span1.setSpan(new RelativeSizeSpan(0.67f), span1.length() - 3, span1.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+//                }
+//                if (tx.isMove()) {
+//                    tvResult.setBackgroundResource(tx.getConfirmations() < nbConfirmations ? R.drawable.rounded_view_lighter_blue_50 : R.drawable.rounded_view_lighter_blue);
+//                    tvDirection.setTextColor(context.getResources().getColor(tx.getConfirmations() < nbConfirmations ? R.color.blockchain_transfer_blue_50 : R.color.blockchain_transfer_blue));
+//                } else if (_btc_balance < 0.0) {
+//                    tvResult.setBackgroundResource(tx.getConfirmations() < nbConfirmations ? R.drawable.rounded_view_red_50 : R.drawable.rounded_view_red);
+//                    tvDirection.setTextColor(context.getResources().getColor(tx.getConfirmations() < nbConfirmations ? R.color.blockchain_red_50 : R.color.blockchain_send_red));
+//                } else {
+//                    tvResult.setBackgroundResource(tx.getConfirmations() < nbConfirmations ? R.drawable.rounded_view_green_50 : R.drawable.rounded_view_green);
+//                    tvDirection.setTextColor(context.getResources().getColor(tx.getConfirmations() < nbConfirmations ? R.color.blockchain_green_50 : R.color.blockchain_receive_green));
+//                }
+//
+//                TextView tvWatchOnly = (TextView) holder.itemView.findViewById(R.id.watch_only);
+//                if(tx.isWatchOnly()){
+//                    tvWatchOnly.setVisibility(View.VISIBLE);
+//                }else{
+//                    tvWatchOnly.setVisibility(View.GONE);
+//                }
+//
+//                tvResult.setText(span1);
+//
+//                tvResult.setOnTouchListener(new OnTouchListener() {
+//                    @Override
+//                    public boolean onTouch(View v, MotionEvent event) {
+//
+//                        FrameLayout parent = (FrameLayout) v.getParent();
+//                        event.setLocation(v.getX() + (v.getWidth() / 2), v.getY() + (v.getHeight() / 2));
+//                        parent.onTouchEvent(event);
+//
+//                        if (event.getAction() == MotionEvent.ACTION_UP) {
+//                            isBTC = (isBTC) ? false : true;
+//                            viewModel.updateBalanceAndTransactionList(null, accountSpinner.getSelectedItemPosition(), isBTC);
+//                        }
+//                        return true;
+//                    }
+//                });
+//
+//                txTouchView.setOnTouchListener(new OnTouchListener() {
+//                    @Override
+//                    public boolean onTouch(View v, MotionEvent event) {
+//
+//                        FrameLayout parent = (FrameLayout) v.getParent();
+//                        event.setLocation(event.getX(), v.getY() + (v.getHeight() / 2));
+//                        parent.onTouchEvent(event);
+//
+//                        if (event.getAction() == MotionEvent.ACTION_UP) {
+//                            onRowClick(holder.itemView, position);
+//                        }
+//                        return true;
+//                    }
+//                });
+//            }
+//        }
+//
+//        @Override
+//        public int getItemCount() {
+//            if (viewModel.getTransactionList() == null) return 0;
+//            return viewModel.getTransactionList().size();
+//        }
+//
+//        @Override
+//        public int getItemViewType(int position) {
+//            return position;
+//        }
+//
+//        public class ViewHolder extends RecyclerView.ViewHolder {
+//
+//            public ViewHolder(View view) {
+//                super(view);
+//            }
+//        }
+//    }
 
     public abstract class CollapseActionbarScrollListener extends RecyclerView.OnScrollListener {
 
